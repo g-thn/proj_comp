@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import colors
 
 class Ply:
     def __init__(self,e1, e2, g12, nu12,z_top,z_bot,theta, x = 0., y = 0., s = 0.):
@@ -172,10 +173,52 @@ class Laminate:
         self.tscrit = np.max(tscrit_list)
 
     def plot_laminate(self):
-        pass
+        """
+        Plot all the layer of the laminate with their orientation
+        each layer is represented by a rectangle with a color corresponding to its orientation
+        """
+        import matplotlib.patches as ptch
+        fig, ax = plt.subplots()
+        width = 5*self.thickness
+        norm = colors.Normalize(vmin=-90, vmax=90)
+        mappable = plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis)
+
+        for ply in self.ply_list:
+            theta_deg = ply.theta * 180.0 / np.pi
+            print(ply.z_bot, ply.z_top, ply.thickness, theta_deg, 2*(ply.theta - np.pi/4)/np.pi)
+            color = mappable.to_rgba(theta_deg)
+            rect = ptch.Rectangle((-width/2, ply.z_bot), width, ply.thickness, angle=0, color=color)
+            ax.add_patch(rect)
+
+        print('thickness:', self.thickness)
+        ax.set_xlim([-.6*width, .6*width])
+        ax.set_ylim([-0.6*self.thickness, 0.6*self.thickness])
+        ax.set_aspect('equal')
+        ax.set_xlabel('Width')
+        ax.set_ylabel('Thickness')
+        ax.set_title('Laminate Layup')
+        cbar = fig.colorbar(mappable, ax=ax, label='Ply Orientation (degrees)',orientation='horizontal')
+        cbar.set_ticks(np.linspace(-90, 90, 7))
+        plt.show()
     
     def plot_stress_distribution(self, num_points=100):
-        pass
+        plt.figure()
+        for ind_ply, ply in enumerate(self.ply_list):
+            z_sample = np.linspace(ply.z_bot, ply.z_top, num_points)
+            sig_glob = ply.stress(z_sample)
+            #sig_loc = np.dot(ply.matrot, sig_glob)
+            sigxx = sig_glob[0,:]
+            sigyy = sig_glob[1,:]
+            sigxy = sig_glob[2,:]
+            plt.plot(z_sample, sigxx, label=r'$\sigma_{xx}$')
+            plt.plot(z_sample, sigyy, label=r'$\sigma_{yy}$')
+            plt.plot(z_sample, sigxy, label=r'$\sigma_{xy}$')
+            plt.legend()
+            #plt.grid()
+        plt.title(f'Stress Distribution in the Laminate')
+        plt.xlabel('Thickness (m)')
+        plt.ylabel('Stress (Pa)')
+        plt.show()
     
 if __name__ == "__main__":
     
@@ -194,10 +237,10 @@ if __name__ == "__main__":
     xf = .4e6
     yf = .4e6
     sf = .15e6
-    theta1 = 0.*np.pi/180.
+    theta1 = 30.*np.pi/180.
     theta2 = 0.*np.pi/180.
-    theta3 = 0.*np.pi/180.
-    z1 = 4-3
+    theta3 = -30.*np.pi/180.
+    z1 = 4e-3
     z2 = 3e-3
     z3 = -3e-3
     z4 = -4e-3
@@ -219,5 +262,6 @@ if __name__ == "__main__":
     laminate.update_tsai_hill()
     print("Tsai-Hill criterion:", laminate.ply_list[0].tscrit, laminate.ply_list[1].tscrit, laminate.ply_list[2].tscrit)
     print("Max Tsai-Hill criterion;", laminate.tscrit)
+    print("Ply 1 stress", laminate.ply_list[0].stress(np.linspace(ply1.z_bot,ply1.z_top,10)))
     laminate.plot_laminate()
     laminate.plot_stress_distribution()
