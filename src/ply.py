@@ -88,15 +88,18 @@ class Ply:
         self.y = y
         self.s = s
 
+    def tsai_hill(self,z):
+        sig_glob = self.stress(z)
+        sig_loc = np.dot(self.matrot, sig_glob)
+        sig1 = sig_loc[0,:]
+        sig2 = sig_loc[1,:]
+        tau12 = sig_loc[2,:]
+        return (sig1/self.x)**2 - (sig1*sig2)/(self.x**2) + (sig2/self.y)**2 + (tau12/self.s)**2
+
     def tsai_hill_crit(self):
         crit_values = []
         for z in [self.z_top, self.z_bot]:
-            sig_glob = self.stress(z)
-            sig_loc = np.dot(self.matrot, sig_glob)
-            sig1 = sig_loc[0,0]
-            sig2 = sig_loc[1,0]
-            tau12 = sig_loc[2,0]
-            crit = (sig1/self.x)**2 - (sig1*sig2)/(self.x**2) + (sig2/self.y)**2 + (tau12/self.s)**2
+            crit = self.tsai_hill(z)
             crit_values.append(crit)
         self.tscrit =  np.max(crit_values)
         return self.tscrit
@@ -127,13 +130,15 @@ class Laminate:
         self.force = force
         self.moment = moment
         self.load = np.vstack((force, moment))
+        self.comp_deformation()
     
     def set_deformation(self, eps_top, eps_bot):
         self.eps0 = 0.5*(eps_top + eps_bot)
         self.phi = (eps_top - eps_bot)/self.thickness
         self.deformation = np.vstack((self.eps0, self.phi))
         self.update_plies()
-        
+        self.comp_load()
+
     def update_plies(self):
         for ply in self.ply_list:
             ply.set_eps_phi(self.eps0, self.phi)
@@ -148,6 +153,9 @@ class Laminate:
             d_tot += ply.d_loc()
         abd_tot = np.block([[a_tot, b_tot],
                             [b_tot, d_tot]])
+        self.a = a_tot
+        self.b = b_tot
+        self.d = d_tot
         self.abd = abd_tot
         return abd_tot
     
@@ -203,22 +211,48 @@ class Laminate:
     
     def plot_stress_distribution(self, num_points=100):
         plt.figure()
+        sigxx = np.array([])
+        sigyy = np.array([])
+        sigxy = np.array([])
+        z_sample = np.array([])
         for ind_ply, ply in enumerate(self.ply_list):
-            z_sample = np.linspace(ply.z_bot, ply.z_top, num_points)
-            sig_glob = ply.stress(z_sample)
-            #sig_loc = np.dot(ply.matrot, sig_glob)
-            sigxx = sig_glob[0,:]
-            sigyy = sig_glob[1,:]
-            sigxy = sig_glob[2,:]
-            plt.plot(z_sample, sigxx, label=r'$\sigma_{xx}$')
-            plt.plot(z_sample, sigyy, label=r'$\sigma_{yy}$')
-            plt.plot(z_sample, sigxy, label=r'$\sigma_{xy}$')
-            plt.legend()
-            #plt.grid()
+            z_sample_tmp = np.linspace(ply.z_bot, ply.z_top, num_points)         
+            z_sample = np.append(z_sample,z_sample_tmp)
+            sig_glob = ply.stress(z_sample_tmp)
+            sigxx = np.append(sigxx, sig_glob[0,:])
+            sigyy = np.append(sigyy, sig_glob[1,:])#sig_glob[1,:]
+            sigxy = np.append(sigxy, sig_glob[2,:])#sig_glob[2,:]
+        ind_sort = np.argsort(z_sample)
+        plt.plot(z_sample[ind_sort], sigxx[ind_sort]/1e6, label=r'$\sigma_{xx}$')
+        plt.plot(z_sample[ind_sort], sigyy[ind_sort]/1e6, label=r'$\sigma_{yy}$')
+        plt.plot(z_sample[ind_sort], sigxy[ind_sort]/1e6, label=r'$\sigma_{xy}$')
+        plt.legend()
         plt.title(f'Stress Distribution in the Laminate')
         plt.xlabel('Thickness (m)')
-        plt.ylabel('Stress (Pa)')
+        plt.ylabel('Stress (MPa)')
         plt.show()
+
+    def plot_tsai_hill(self, num_points=100):
+        plt.figure()
+        ts_arr = np.array([])
+        z_sample = np.array([])
+        for ind_ply, ply in enumerate(self.ply_list):
+            z_sample_tmp = np.linspace(ply.z_bot, ply.z_top, num_points)         
+            z_sample = np.append(z_sample,z_sample_tmp)
+            ts_arr = np.append(ts_arr, ply.tsai_hill(z_sample_tmp))
+        ind_sort = np.argsort(z_sample)
+        plt.plot(z_sample[ind_sort], ts_arr[ind_sort], label=r'Tsai-Hill Criterion')
+        plt.legend()
+        plt.title(f'Tsai-Hill criterion in the Laminate')
+        plt.xlabel('Thickness (m)')
+        plt.ylabel('Stress (MPa)')
+        plt.show()
+    
+    def comp_elastic_energy(self):
+        self.elastic_energy = .5*(np.dot(np.dot(self.eps0.T,self.a),self.eps0) + np.dot(np.dot(self.phi.T,self.d),self.phi))
+        return self.elastic_energy[0][0]
+    
+
     
 if __name__ == "__main__":
     
@@ -237,9 +271,9 @@ if __name__ == "__main__":
     xf = .4e6
     yf = .4e6
     sf = .15e6
-    theta1 = 30.*np.pi/180.
+    theta1 = 0.*np.pi/180.
     theta2 = 0.*np.pi/180.
-    theta3 = -30.*np.pi/180.
+    theta3 = -0.*np.pi/180.
     z1 = 4e-3
     z2 = 3e-3
     z3 = -3e-3
@@ -257,11 +291,7 @@ if __name__ == "__main__":
                              [6.6],
                              [0.0]])
     laminate.set_deformation(eps_top, eps_bot)
-    print("Laminate eps0:", laminate.eps0.flatten())
-    print("Laminate phi:", laminate.phi.flatten())
     laminate.update_tsai_hill()
-    print("Tsai-Hill criterion:", laminate.ply_list[0].tscrit, laminate.ply_list[1].tscrit, laminate.ply_list[2].tscrit)
-    print("Max Tsai-Hill criterion;", laminate.tscrit)
-    print("Ply 1 stress", laminate.ply_list[0].stress(np.linspace(ply1.z_bot,ply1.z_top,10)))
     laminate.plot_laminate()
     laminate.plot_stress_distribution()
+    laminate.plot_tsai_hill()
