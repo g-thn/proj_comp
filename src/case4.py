@@ -22,6 +22,8 @@ energy_max = 0.
 best_config = None
 progress = 0
 nb_valid_config = 0
+ts_max=0
+laminate_all = []
 for a1 in angle_configurations:
     for a2 in angle_configurations:
         for a3 in angle_configurations:
@@ -34,19 +36,20 @@ for a1 in angle_configurations:
                     ply_list.append(ply_tmp)
                 laminate = ply.Laminate(ply_list)
                 laminate.abd_global()
-                laminate.set_load(np.array([[1.e4],
-                                            [-5.e4],
+                laminate.set_load(np.array([[0.e4],
+                                            [0.],
                                             [0.]]),
-                                  np.array([[1.e4],
-                                            [1e4],
+                                  np.array([[30.e3],
+                                            [0.],
                                             [0.]]))
                 laminate.comp_deformation()
                 laminate.update_tsai_hill()
-                
+                laminate_all.append(laminate)
                 if laminate.tscrit < 1.:
                     nb_valid_config += 1
-                    energy_max = max(energy_max, laminate.comp_elastic_energy())
-                    if energy_max == laminate.elastic_energy:
+                    ts_max = max(ts_max, laminate.tscrit)
+                    # energy_max = max(energy_max, laminate.comp_elastic_energy())
+                    if ts_max == laminate.tscrit:
                         best_config = [a1, a2, a3, a4]
                 progress += 1
                 if progress % 10 == 0:
@@ -55,4 +58,4 @@ for a1 in angle_configurations:
 
 print("Number of valid configurations:", nb_valid_config)
 print("Best angle configuration (deg):", best_config)
-print("Maximum elastic energy over all configurations:", energy_max)
+print("Maximum Tsai-Hill coefficient over all configurations:", ts_max)
